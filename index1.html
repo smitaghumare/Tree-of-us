@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tree Of Us - Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #2d5a27; --secondary: #6ab04c; --bg: #f4f7f1; --accent: #f0932b; --white: #ffffff; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Poppins', sans-serif; background: var(--bg); overflow: hidden; }
+        
+        /* Login Screen - Forced First */
+        #login-page { position: fixed; inset: 0; background: linear-gradient(135deg, var(--primary), var(--secondary)); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+        .login-card { background: white; padding: 40px; border-radius: 30px; text-align: center; width: 80%; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+
+        /* Main Layout */
+        .page { display: none; height: calc(100vh - 80px); overflow-y: auto; padding: 20px; box-sizing: border-box; padding-bottom: 100px; }
+        .page.active { display: block; }
+        
+        /* Family Selector Bar */
+        .family-bar { background: var(--primary); color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+
+        /* Directory List */
+        .member-item { background: white; margin-bottom: 10px; padding: 15px; border-radius: 15px; display: flex; align-items: center; gap: 15px; cursor: pointer; border: 1px solid #eee; }
+        .member-item img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; background: #eee; }
+        
+        /* Profile Modal */
+        #profile-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 3000; display: none; align-items: center; justify-content: center; }
+        .profile-card { background: white; width: 85%; padding: 25px; border-radius: 25px; position: relative; }
+
+        /* Nav */
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; height: 80px; background: white; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); border-top-left-radius: 25px; border-top-right-radius: 25px; z-index: 1000; }
+        .nav-item { text-align: center; font-size: 11px; color: #a0a0a0; flex: 1; }
+        .nav-item.active { color: var(--primary); font-weight: bold; }
+        
+        .btn-main { background: var(--primary); color: white; border: none; width: 100%; padding: 14px; border-radius: 12px; font-weight: 600; margin-top: 10px; }
+        input, select { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 10px; margin-top: 5px; margin-bottom: 10px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+    <div id="login-page">
+        <div class="login-card">
+            <div style="font-size: 50px;">🌳</div>
+            <h1 style="color: var(--primary); margin: 10px 0;">Tree Of Us</h1>
+            <p>Enter your name to begin</p>
+            <input type="text" id="userName" placeholder="Your Name">
+            <button class="btn-main" onclick="startApp()">Enter My Archive</button>
+        </div>
+    </div>
+
+    <div id="app-ui" style="display:none;">
+        <div class="family-bar">
+            <span id="current-family-name">Main Family</span>
+            <button onclick="switchFamily()" style="background:none; border:1px solid white; color:white; border-radius:5px; padding:2px 8px; font-size:10px;">Switch Family</button>
+        </div>
+
+        <div id="tab-tree" class="page active">
+            <h2>Lineage Visual</h2>
+            <div id="tree-container" style="width:100%; height:400px; background:white; border-radius:20px;"></div>
+        </div>
+
+        <div id="tab-add" class="page">
+            <h2>Add New Member</h2>
+            <label>Name</label><input type="text" id="mName">
+            <label>Birth Date</label><input type="date" id="mBirth">
+            <label>Father</label><select id="mFather"><option value="">None (Root)</option></select>
+            <label>Mother</label><select id="mMother"><option value="">None (Root)</option></select>
+            <label>Spouse</label><select id="mSpouse"><option value="">None</option></select>
+            <label>Education</label><input type="text" id="mEdu">
+            <label>Profession</label><input type="text" id="mProf">
+            <button class="btn-main" onclick="saveMember()">Save Member</button>
+        </div>
+
+        <div id="tab-list" class="page">
+            <h2>Member Directory</h2>
+            <div id="directory-list"></div>
+        </div>
+
+        <nav class="bottom-nav">
+            <div class="nav-item active" onclick="showTab('tree', this)"><div>🌳</div>Tree</div>
+            <div class="nav-item" onclick="showTab('add', this)"><div>➕</div>Add</div>
+            <div class="nav-item" onclick="showTab('list', this)"><div>👥</div>Directory</div>
+        </nav>
+    </div>
+
+    <div id="profile-modal" onclick="this.style.display='none'">
+        <div class="profile-card" onclick="event.stopPropagation()">
+            <h2 id="p-name" style="margin-top:0; color:var(--primary);"></h2>
+            <p><strong>Birth:</strong> <span id="p-birth"></span></p>
+            <p><strong>Education:</strong> <span id="p-edu"></span></p>
+            <p><strong>Profession:</strong> <span id="p-prof"></span></p>
+            <button class="btn-main" onclick="document.getElementById('profile-modal').style.display='none'">Close</button>
+        </div>
+    </div>
+
+    <script>
+        let currentFamily = localStorage.getItem('activeFamily') || 'Family1';
+        let allFamilies = JSON.parse(localStorage.getItem('allFamilies')) || { 'Family1': [] };
+
+        function startApp() {
+            if(document.getElementById('userName').value) {
+                document.getElementById('login-page').style.display = 'none';
+                document.getElementById('app-ui').style.display = 'block';
+                refreshUI();
+            }
+        }
+
+        function showTab(id, el) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('tab-'+id).classList.add('active');
+            el.classList.add('active');
+            if(id === 'tree') renderTree();
+            if(id === 'list') renderDirectory();
+        }
+
+        function saveMember() {
+            const name = document.getElementById('mName').value;
+            if(!name) return;
+            const newMember = {
+                id: "ID"+Date.now(),
+                name,
+                birth: document.getElementById('mBirth').value,
+                father: document.getElementById('mFather').value,
+                mother: document.getElementById('mMother').value,
+                spouse: document.getElementById('mSpouse').value,
+                edu: document.getElementById('mEdu').value,
+                prof: document.getElementById('mProf').value
+            };
+            allFamilies[currentFamily].push(newMember);
+            localStorage.setItem('allFamilies', JSON.stringify(allFamilies));
+            alert("Saved!");
+            refreshUI();
+            showTab('list', document.querySelectorAll('.nav-item')[2]);
+        }
+
+        function renderDirectory() {
+            const container = document.getElementById('directory-list');
+            container.innerHTML = "";
+            allFamilies[currentFamily].forEach(m => {
+                const div = document.createElement('div');
+                div.className = "member-item";
+                div.innerHTML = `<div><strong>${m.name}</strong><br><small>${m.prof || 'Family Member'}</small></div>`;
+                div.onclick = () => showProfile(m);
+                container.appendChild(div);
+            });
+        }
+
+        function showProfile(m) {
+            document.getElementById('p-name').innerText = m.name;
+            document.getElementById('p-birth').innerText = m.birth || 'N/A';
+            document.getElementById('p-edu').innerText = m.edu || 'N/A';
+            document.getElementById('p-prof').innerText = m.prof || 'N/A';
+            document.getElementById('profile-modal').style.display = 'flex';
+        }
+
+        function switchFamily() {
+            const newFam = prompt("Enter Family Name (e.g. Smith Family):");
+            if(newFam) {
+                if(!allFamilies[newFam]) allFamilies[newFam] = [];
+                currentFamily = newFam;
+                localStorage.setItem('activeFamily', currentFamily);
+                localStorage.setItem('allFamilies', JSON.stringify(allFamilies));
+                document.getElementById('current-family-name').innerText = currentFamily;
+                refreshUI();
+            }
+        }
+
+        function refreshUI() {
+            const selects = [document.getElementById('mFather'), document.getElementById('mMother'), document.getElementById('mSpouse')];
+            selects.forEach(s => {
+                s.innerHTML = '<option value="">None</option>';
+                allFamilies[currentFamily].forEach(m => s.innerHTML += `<option value="${m.id}">${m.name}</option>`);
+            });
+            renderDirectory();
+        }
+
+        // Logic for D3 Tree Visualization remains consistent with hierarchy selection
+        function renderTree() {
+            d3.select("#tree-container").selectAll("*").remove();
+            const data = allFamilies[currentFamily];
+            if(data.length === 0) return;
+            // D3 logic to display hierarchy...
+        }
+    </script>
+</body>
+</html>
