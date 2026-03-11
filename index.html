@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tree Of Us - Grand Archive</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #2d5a27; --secondary: #6ab04c; --bg: #f4f7f1; --accent: #f0932b; --white: #ffffff; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Poppins', sans-serif; background: var(--bg); overflow: hidden; }
+        
+        .page { display: none; height: calc(100vh - 80px); overflow-y: auto; padding: 20px; box-sizing: border-box; }
+        .page.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Form Styling */
+        .form-card { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .input-label { display: block; margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--primary); }
+        input, select, textarea { width: 100%; padding: 12px; border: 1px solid #eee; border-radius: 10px; margin-top: 5px; font-family: inherit; box-sizing: border-box; background: #fafafa; }
+        
+        /* Nav */
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; height: 80px; background: white; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 -5px 20px rgba(0,0,0,0.05); border-top-left-radius: 25px; border-top-right-radius: 25px; }
+        .nav-item { text-align: center; font-size: 11px; color: #a0a0a0; flex: 1; cursor: pointer; }
+        .nav-item.active { color: var(--primary); font-weight: bold; }
+        .btn-main { background: var(--primary); color: white; border: none; width: 100%; padding: 16px; border-radius: 15px; font-weight: 600; margin-top: 25px; font-size: 16px; }
+
+        #tree-container { width: 100%; height: 100%; background: white; border-radius: 20px; overflow: hidden; }
+        .node circle { stroke: var(--primary); stroke-width: 2px; }
+        .spouse-line { stroke: var(--accent); stroke-width: 2px; stroke-dasharray: 4; }
+    </style>
+</head>
+<body>
+
+    <div id="main-content">
+        <div id="tab-tree" class="page active">
+            <h2 style="margin:0 0 10px 0;">Family Lineage</h2>
+            <div id="tree-container"></div>
+        </div>
+
+        <div id="tab-add" class="page">
+            <div class="form-card">
+                <h2 style="margin-top:0;">New Member</h2>
+                
+                <center>
+                    <div id="p-preview" onclick="document.getElementById('mPhoto').click()" style="width:80px; height:80px; border-radius:50%; background:#eee; display:flex; align-items:center; justify-content:center; cursor:pointer; overflow:hidden; border:2px solid var(--secondary);">📸</div>
+                    <input type="file" id="mPhoto" accept="image/*" style="display:none;" onchange="previewImg(this)">
+                </center>
+
+                <label class="input-label">Full Name</label>
+                <input type="text" id="mName" placeholder="Full Name">
+
+                <label class="input-label">Birth Date</label>
+                <input type="date" id="mBirth">
+
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:1">
+                        <label class="input-label">Father</label>
+                        <select id="mFather"><option value="">Select</option></select>
+                    </div>
+                    <div style="flex:1">
+                        <label class="input-label">Mother</label>
+                        <select id="mMother"><option value="">Select</option></select>
+                    </div>
+                </div>
+
+                <label class="input-label">Spouse (Husband/Wife)</label>
+                <select id="mSpouse"><option value="">None</option></select>
+
+                <label class="input-label">Education</label>
+                <input type="text" id="mEdu" placeholder="Degree / School">
+
+                <label class="input-label">Profession</label>
+                <input type="text" id="mProf" placeholder="Job Title">
+
+                <button class="btn-main" onclick="saveMember()">Save to Archive</button>
+            </div>
+        </div>
+
+        <nav class="bottom-nav">
+            <div class="nav-item active" onclick="showTab('tree', this)"><div>🌳</div>Tree</div>
+            <div class="nav-item" onclick="showTab('add', this)"><div>➕</div>Add</div>
+            <div class="nav-item" onclick="location.reload()"><div>🔄</div>Reset</div>
+        </nav>
+    </div>
+
+    <script>
+        let members = JSON.parse(localStorage.getItem('family_grand_v1')) || [];
+        const placeholder = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ccc' d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E";
+
+        function showTab(id, el) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('tab-'+id).classList.add('active');
+            el.classList.add('active');
+            if(id === 'tree') renderTree();
+        }
+
+        function previewImg(input) {
+            if (input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = e => document.getElementById('p-preview').innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+                reader.readAsDataURL(input.files[0]);
+            }
+        }
+
+        async function saveMember() {
+            const name = document.getElementById('mName').value;
+            if(!name) return alert("Name is required");
+
+            const imgFile = document.getElementById('mPhoto').files[0];
+            let photo = placeholder;
+            if(imgFile) {
+                photo = await new Promise(res => {
+                    const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(imgFile);
+                });
+            }
+
+            const newId = "ID" + Date.now();
+            const member = {
+                id: newId,
+                name,
+                birth: document.getElementById('mBirth').value,
+                father: document.getElementById('mFather').value,
+                mother: document.getElementById('mMother').value,
+                spouse: document.getElementById('mSpouse').value,
+                edu: document.getElementById('mEdu').value,
+                prof: document.getElementById('mProf').value,
+                photo: photo
+            };
+
+            members.push(member);
+            localStorage.setItem('family_grand_v1', JSON.stringify(members));
+            alert("Member Added!");
+            location.reload(); // Refresh to update dropdowns
+        }
+
+        function refreshDropdowns() {
+            const f = document.getElementById('mFather');
+            const m = document.getElementById('mMother');
+            const s = document.getElementById('mSpouse');
+            members.forEach(mbr => {
+                const opt = `<option value="${mbr.id}">${mbr.name}</option>`;
+                f.innerHTML += opt; m.innerHTML += opt; s.innerHTML += opt;
+            });
+        }
+
+        function renderTree() {
+            d3.select("#tree-container").selectAll("*").remove();
+            if(!members.length) return;
+
+            const width = document.getElementById('tree-container').offsetWidth;
+            const height = document.getElementById('tree-container').offsetHeight;
+
+            // Using Father as the primary bloodline for hierarchy
+            const stratify = d3.stratify().id(d => d.id).parentId(d => d.father || d.mother);
+            let root;
+            try { root = stratify(members); } catch(e) { 
+                document.getElementById('tree-container').innerHTML = "<p style='padding:20px;'>Start by adding one 'Root' member with no Father/Mother selected.</p>";
+                return;
+            }
+
+            const svg = d3.select("#tree-container").append("svg")
+                .attr("width", width).attr("height", height)
+                .append("g").attr("transform", "translate(60,60)");
+
+            const treeLayout = d3.tree().size([height - 150, width - 200]);
+            treeLayout(root);
+
+            svg.selectAll(".link").data(root.links()).enter().append("path")
+                .attr("fill", "none").attr("stroke", "#ccc").attr("stroke-width", 2)
+                .attr("d", d3.linkHorizontal().x(d => d.y).y(d => d.x));
+
+            const node = svg.selectAll(".node").data(root.descendants()).enter().append("g")
+                .attr("transform", d => `translate(${d.y},${d.x})`);
+
+            node.append("circle").attr("r", 15).attr("fill", "white").attr("stroke", "#2d5a27");
+            node.append("text").attr("dy", 25).attr("text-anchor", "middle").style("font-size", "10px").text(d => d.data.name);
+        }
+
+        window.onload = refreshDropdowns;
+    </script>
+</body>
+</html>
